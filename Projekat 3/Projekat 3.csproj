@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net7.0</TargetFramework>
+    <RootNamespace>Projekat_3</RootNamespace>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Accord" Version="3.8.0" />
+    <PackageReference Include="Microsoft.ML" Version="2.0.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
+    <PackageReference Include="OpenNLP.NET" Version="1.9.4.1" />
+    <PackageReference Include="Python.Runtime" Version="2.7.9" />
+    <PackageReference Include="Reddit" Version="1.5.2" />
+    <PackageReference Include="SharpEntropy" Version="1.0.0" />
+    <PackageReference Include="System.Reactive" Version="6.0.0" />
+  </ItemGroup>
+
+</Project>
