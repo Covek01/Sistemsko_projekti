@@ -1,3 +1,9 @@
+using ResponseClasses;
+using System.Net;
+using System.Threading;
+using System.IO;
+using System.Text;
+using System.Runtime;
 using System.Net;
 
 public class HttpServer
@@ -126,7 +132,9 @@ public class HttpServer
             lock(ConsoleLogLocker.Locker)
             {
                 context.Response.StatusCode = (int)(HttpStatusCode.BadRequest);
+                context.Response.StatusDescription = message;
                 Console.WriteLine($"\n\nStatus code: {context.Response.StatusCode}, {message}");
+                context.Response.OutputStream.Write(Encoding.UTF8.GetBytes(HttpServer.createParagraph("Bad request")));
                 context.Response.OutputStream.Close();
             }
         }

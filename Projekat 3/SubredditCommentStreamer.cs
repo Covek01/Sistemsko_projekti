@@ -25,7 +25,7 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
 {
     private readonly Subject<SubredditEvaluatedResult> subject; 
     private List<SubredditRoll> subreddits;
-    public HttpListenerContext context;
+    public readonly HttpListenerContext context;
 
     public SubredditCommentStreamer(HttpListenerContext context)
     {
@@ -89,6 +89,7 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
     public async Task PerformModeling(List<string> subreddits, int numOfSubreddits, int numOfPosts, int numOfCommentsPerPost)
     {
         string outputResponseForHTML = "";
+        bool validRequest = true;
         if (subreddits.Count == 0)
         {
             lock(ConsoleLogLocker.Locker)
@@ -105,43 +106,53 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
                     Console.WriteLine($"\nPerforming topic modeling for first {numOfPosts * numOfCommentsPerPost} comments in r/{subreddit}...");
                     
                 }
-                context.Response.OutputStream.Write(Encoding.UTF8.GetBytes
-                (HttpServer.createParagraph($"Performing topic modeling for first {numOfPosts * numOfCommentsPerPost} comments in r/{subreddit}..."))
-                );
+               
                 List<Comment> comments = await this.ReturnAllCommentsBySubreddit(subreddit, numOfPosts, numOfCommentsPerPost);
                 if (comments == null)
                 {
-                    throw new Exception($"Error with fetching comments from r/{subreddit}");
+                    //HttpServer.ReturnBadRequest(context, $"Error with fetching comments from r/{subreddit} or r/{subreddit} doesn't exist");
+                    context.Response.OutputStream.Write
+                    (Encoding.UTF8.GetBytes(HttpServer.createParagraph($"<br/> Subreddit r/{subreddit} doesn't exist <br/>")));
+                    //return;
+                    //throw new Exception($"Error with fetching comments from r/{subreddit} or r/{subreddit} doesn't exist");
+                }
+                else{
+                     context.Response.OutputStream.Write(Encoding.UTF8.GetBytes
+                    (HttpServer.createParagraph($"Performing topic modeling for first {numOfPosts * numOfCommentsPerPost} comments in r/{subreddit}..."))
+                    );
+                    ConcurrentBag<string> concurrentComments = new ConcurrentBag<string>();
+                    foreach(var comment in comments)
+                    {
+                        concurrentComments.Add(comment.Body);
+                    }
+
+                    int numOfTopics = 5;
+                    LDA.ProccessData(concurrentComments);
+                    LDA.TrainModel(numOfTopics);
+
+                    lock(ConsoleLogLocker.Locker)
+                    {
+                        Console.WriteLine("\n\nResults of topic modeling:");
+                        outputResponseForHTML += HttpServer.createParagraph
+                        ($"Results of topic modeling:");
+                    }
+
+                    foreach (var comment in concurrentComments)
+                    {
+                        SubredditEvaluatedResult resultTopic = new SubredditEvaluatedResult(LDA.Predict(comment), subreddit, context);
+                        subject.OnNext(resultTopic);
+                       
+                    }
                 }
 
-                ConcurrentBag<string> concurrentComments = new ConcurrentBag<string>();
-                foreach(var comment in comments)
-                {
-                    concurrentComments.Add(comment.Body);
-                }
-
-                int numOfTopics = 5;
-                LDA.ProccessData(concurrentComments);
-                LDA.TrainModel(numOfTopics);
-
-                lock(ConsoleLogLocker.Locker)
-                {
-                    Console.WriteLine("\n\nResults of topic modeling:");
-                    outputResponseForHTML += HttpServer.createParagraph
-                    ($"Results of topic modeling:");
-                }
-
-                foreach (var comment in concurrentComments)
-                {
-                    SubredditEvaluatedResult resultTopic = new SubredditEvaluatedResult(LDA.Predict(comment), subreddit, context);
-                    subject.OnNext(resultTopic);
-                    int a = 1;
-                }
+                
             }
-    
+
             context.Response.OutputStream.Write
             (Encoding.UTF8.GetBytes(HttpServer.createParagraph("Finished with topic modeling results for specified subreddits")));
             context.Response.OutputStream.Close();
+
+
             subject.OnCompleted(); 
             
         }
@@ -149,8 +160,8 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
         {
             subject.OnError(ex);
             context.Response.StatusCode = (int)(HttpStatusCode.InternalServerError);
-            context.Response.StatusDescription = "Bad topic modeling";
-            context.Response.OutputStream.Close();
+            context.Response.StatusDescription = ex.Message;
+            context.Response.OutputStream.Flush();
         }
     }
 
