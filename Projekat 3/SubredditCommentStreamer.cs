@@ -1,6 +1,8 @@
 using System.IO;
 using System.Text;
 using System.Reactive.Subjects;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using Newtonsoft.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -15,6 +17,7 @@ using Microsoft.ML.Data;
 using Microsoft.ML.Transforms.Text;
 using Microsoft.ML.Trainers;
 using System.Collections;
+using System.Linq;
 
 public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
 {
@@ -27,13 +30,13 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
         
     }
 
-    public List<SubredditRoll> SetSubreddits(List<string> subreddits)
+    public async Task<List<SubredditRoll>> SetSubreddits(List<string> subreddits)
     {
         var subredditsReturn = new List<SubredditRoll>();
         foreach(var sub in subreddits)
         {
             SubredditRoll subredditRoll = new SubredditRoll(sub);
-            subredditRoll.RedditApi.SetRedditClient();
+            await subredditRoll.SetRedditClientProps();
             subredditsReturn.Add(subredditRoll);
         }
         return subredditsReturn;
@@ -43,7 +46,7 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
     {
         try
         {
-            List<SubredditRoll> subredditRolls = this.SetSubreddits(subreddits);
+            List<SubredditRoll> subredditRolls = await this.SetSubreddits(subreddits);
 
             List<Comment> comments = new List<Comment>();
             foreach(var subredditRoll in subredditRolls)
@@ -62,17 +65,76 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
         }
     }
 
-    public async Task PerformModeling(List<string> subreddits, int numOfSubreddits, int numOfPosts, int numOfCommentsPerPost)
+    public async Task<List<Comment>> ReturnAllCommentsBySubreddit(string subreddit, int numOfPosts, int numOfCommentsPerPost)
     {
         try
         {
-            List<Comment> comments = await this.ReturnAllCommentsForSubreddits(subreddits, numOfPosts, numOfCommentsPerPost);
-            if (comments == null)
+            SubredditRoll subredditRoll = new SubredditRoll(subreddit);
+            await subredditRoll.SetRedditClientProps();
+
+            List<Comment> comments = await subredditRoll.RedditApi.ReturnAllCommentsBySubreddit(subredditRoll.SubredditName, numOfPosts, numOfCommentsPerPost);
+
+            return comments;
+        }
+        catch(Exception ex)
+        {
+            Console.WriteLine(ex.ToString());
+            return null;
+        }
+    }
+
+    public async Task PerformModeling(List<string> subreddits, int numOfSubreddits, int numOfPosts, int numOfCommentsPerPost)
+    {
+        if (subreddits.Count == 0)
+        {
+            lock(ConsoleLogLocker.Locker)
             {
-                throw new Exception("Error with fetching comments from subreddits");
+                Console.WriteLine("\nThere is no subreddit to work with");
             }
+        }
+        try
+        {
+            foreach(var subreddit in subreddits)
+            {
+                lock(ConsoleLogLocker.Locker)
+                {
+                    Console.WriteLine($"\nPerforming topic modeling for first {numOfPosts * numOfCommentsPerPost} comments in r/{subreddit}...");
+                }
+                List<Comment> comments = await this.ReturnAllCommentsBySubreddit(subreddit, numOfPosts, numOfCommentsPerPost);
+                if (comments == null)
+                {
+                    throw new Exception($"Error with fetching comments from r/{subreddit}");
+                }
+
+                ConcurrentBag<string> concurrentComments = new ConcurrentBag<string>();
+                foreach(var comment in comments)
+                {
+                    concurrentComments.Add(comment.Body);
+                }
+
+                int numOfTopics = 5;
+                LDA.ProccessData(concurrentComments);
+                LDA.TrainModel(numOfTopics);
+
+                lock(ConsoleLogLocker.Locker)
+                {
+                    Console.WriteLine("\n\nResults of topic modeling:");
+                }
+                foreach (var comment in concurrentComments)
+                {
+                    string topic = LDA.Predict(comment);
+                    //subject.OnNext(topic)
+                    int a = 1;
+                }
+            }
+            
+
+
+            // var commentTexts = comments.Select(comment => new CommentData { Text = comment.Body });
 
             //perform modeling
+            
+            
         }
         catch(Exception ex)
         {
@@ -89,6 +151,17 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
 
 
 
+}
+
+public class CommentData
+{
+    [LoadColumn(0)]
+    public string Text { get; set; }
+}
+
+public class Stats
+{
+    public float[] Score { get; set; }
 }
 
 
