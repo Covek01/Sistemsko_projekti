@@ -72,15 +72,15 @@ public class LDA
     private static string WriteResultsInConsole(TransformedData prediction)
     {
         string result = "";
-        lock(consoleLogLocker)
+        lock(ConsoleLogLocker.Locker)
         {
             for (int i = 0; i < prediction.Features.Length; i++)
             {
-                Console.Write($"{prediction.Features[i]:F4}  ");
+                //Console.Write($"{prediction.Features[i]:F4}  ");
                 result += $"{prediction.Features[i]:F4}  ";
             }
             result += "\n";
-            Console.WriteLine();
+            //Console.WriteLine();
         }
         
         return result;

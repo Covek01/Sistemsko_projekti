@@ -18,16 +18,19 @@ using Microsoft.ML.Transforms.Text;
 using Microsoft.ML.Trainers;
 using System.Collections;
 using System.Linq;
+using System.Net;
+
 
 public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
 {
     private readonly Subject<SubredditEvaluatedResult> subject; 
     private List<SubredditRoll> subreddits;
+    public HttpListenerContext context;
 
-    public SubredditCommentStreamer()
+    public SubredditCommentStreamer(HttpListenerContext context)
     {
         subject = new Subject<SubredditEvaluatedResult>();
-        
+        this.context = context;
     }
 
     public async Task<List<SubredditRoll>> SetSubreddits(List<string> subreddits)
@@ -85,6 +88,7 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
 
     public async Task PerformModeling(List<string> subreddits, int numOfSubreddits, int numOfPosts, int numOfCommentsPerPost)
     {
+        string outputResponseForHTML = "";
         if (subreddits.Count == 0)
         {
             lock(ConsoleLogLocker.Locker)
@@ -99,7 +103,11 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
                 lock(ConsoleLogLocker.Locker)
                 {
                     Console.WriteLine($"\nPerforming topic modeling for first {numOfPosts * numOfCommentsPerPost} comments in r/{subreddit}...");
+                    
                 }
+                context.Response.OutputStream.Write(Encoding.UTF8.GetBytes
+                (HttpServer.createParagraph($"Performing topic modeling for first {numOfPosts * numOfCommentsPerPost} comments in r/{subreddit}..."))
+                );
                 List<Comment> comments = await this.ReturnAllCommentsBySubreddit(subreddit, numOfPosts, numOfCommentsPerPost);
                 if (comments == null)
                 {
@@ -119,26 +127,30 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
                 lock(ConsoleLogLocker.Locker)
                 {
                     Console.WriteLine("\n\nResults of topic modeling:");
+                    outputResponseForHTML += HttpServer.createParagraph
+                    ($"Results of topic modeling:");
                 }
+
                 foreach (var comment in concurrentComments)
                 {
-                    string topic = LDA.Predict(comment);
-                    //subject.OnNext(topic)
+                    SubredditEvaluatedResult resultTopic = new SubredditEvaluatedResult(LDA.Predict(comment), subreddit, context);
+                    subject.OnNext(resultTopic);
                     int a = 1;
                 }
             }
-            
-
-
-            // var commentTexts = comments.Select(comment => new CommentData { Text = comment.Body });
-
-            //perform modeling
-            
+    
+            context.Response.OutputStream.Write
+            (Encoding.UTF8.GetBytes(HttpServer.createParagraph("Finished with topic modeling results for specified subreddits")));
+            context.Response.OutputStream.Close();
+            subject.OnCompleted(); 
             
         }
         catch(Exception ex)
         {
-            Console.WriteLine(ex.ToString());
+            subject.OnError(ex);
+            context.Response.StatusCode = (int)(HttpStatusCode.InternalServerError);
+            context.Response.StatusDescription = "Bad topic modeling";
+            context.Response.OutputStream.Close();
         }
     }
 
@@ -153,77 +165,7 @@ public class SubredditCommentStreamer : IObservable<SubredditEvaluatedResult>
 
 }
 
-public class CommentData
-{
-    [LoadColumn(0)]
-    public string Text { get; set; }
-}
 
-public class Stats
-{
-    public float[] Score { get; set; }
-}
-
-
-
-// public static class TopicModeling
-// {
-//     public static void PerformTopicModeling(string[] documents, int numTopics)
-//     {
-//         MLContext mlContext = new MLContext();
-
-//         // Define the data schema
-//         var data = new List<TextData>();
-//         for (int i = 0; i < documents.Length; i++)
-//         {
-//             data.Add(new TextData { Id = i.ToString(), Text = documents[i] });
-//         }
-
-//         var dataView = mlContext.Data.LoadFromEnumerable(data);
-
-//         // Define the data preprocessing pipeline
-//         var preprocessingPipeline = mlContext.Transforms.Text.NormalizeText("NormalizedText", "Text")
-//             .Append(mlContext.Transforms.Text.TokenizeWords("Tokens", "NormalizedText"))
-//             .Append(mlContext.Transforms.Text.RemoveDefaultStopWords("Tokens"))
-//             .Append(mlContext.Transforms.Text.FeaturizeText("Features", "Tokens"));
-
-//         // Apply the data preprocessing pipeline
-//         var preprocessedData = preprocessingPipeline.Fit(dataView).Transform(dataView);
-
-//         // Define the LDA estimator
-//         var ldaEstimator = mlContext.Transforms.Conversion.MapKeyToValue("Label")
-//             .Append(mlContext.Transforms.NormalizeMinMax("Features"))
-//             .Append(mlContext.Transforms.Text.LatentDirichletAllocation("TopicFeatures", "Features"));
-
-//         // Train the LDA model
-//         var ldaModel = ldaEstimator.Fit(preprocessedData);
-
-//         // Get the inferred topics and their word distributions
-//         var ldaTransformer = ldaModel.LastTransformer;
-//         var topicDistributions = ldaTransformer.GetTopics();
-
-//         // Print the topics and their top words
-//         for (int topicId = 0; topicId < numTopics; topicId++)
-//         {
-//             Console.WriteLine($"Topic {topicId}:");
-//             var wordDistributions = ldaTransformer.GetTopicTerms(topicId, topTerms: 5);
-//             foreach (var wordDistribution in wordDistributions)
-//             {
-//                 Console.WriteLine($"  {wordDistribution.Term}: {wordDistribution.Score}");
-//             }
-//             Console.WriteLine();
-//         }
-//     }
-
-//     public class TextData
-//     {
-//         [LoadColumn(0)]
-//         public string Id { get; set; }
-
-//         [LoadColumn(1)]
-//         public string Text { get; set; }
-//     }
-// }
 
 
 

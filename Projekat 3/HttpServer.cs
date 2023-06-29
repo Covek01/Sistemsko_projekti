@@ -2,16 +2,12 @@ using System.Net;
 
 public class HttpServer
 {
-    public HttpListener listener;
+    public readonly HttpListener listener;
     public List<string> Subreddits {get; set;}
-    public SubredditCommentStreamer streamer;
-    public SubredditCommentObserver observer;
-    public object consoleLogLocker;
 
     public HttpServer()
     {
         listener = new HttpListener();
-        consoleLogLocker = new object();
     }
 
 
@@ -29,10 +25,10 @@ public class HttpServer
             listener.Start();
             Console.WriteLine("Ready...");
 
-            this.streamer = new SubredditCommentStreamer();
-            this.observer = new SubredditCommentObserver();
+            // this.streamer = new SubredditCommentStreamer();
+            // this.observer = new SubredditCommentObserver();
 
-            var subscription = this.streamer.Subscribe(this.observer);
+            // var subscription = this.streamer.Subscribe(this.observer);
             
 
             while (true)
@@ -52,7 +48,7 @@ public class HttpServer
             {
                 if (context.Request.QueryString.GetKey(0) == "subreddit")
                 {
-                    lock(consoleLogLocker)
+                    lock(ConsoleLogLocker.Locker)
                     {
                         context.Response.StatusCode = (int)(HttpStatusCode.BadRequest);
                         Console.WriteLine($"\n\nStatuss code: {context.Response.StatusCode},There is no subreddit for calculating");
@@ -65,7 +61,21 @@ public class HttpServer
 
             int numOfPosts = 10;
             int numOfCommentsPerPost = 10;
+
+            var streamer = new SubredditCommentStreamer(context);
+            var observer = new SubredditCommentObserver();
+
+            var subscription = streamer.Subscribe(observer);
+
             await streamer.PerformModeling(subreddits, subredditCount, numOfPosts, numOfCommentsPerPost);
+
+
+            subscription.Dispose();
+        }
+
+        public static string createParagraph(string text)
+        {
+            return "<p>" + text + "</p>";
         }
 
         public List<string> ParseQueryString(HttpListenerContext context)
@@ -77,12 +87,7 @@ public class HttpServer
             string key = request.QueryString.GetKey(0);
             if (key == null)
             {
-                lock(consoleLogLocker)
-                {
-                    context.Response.StatusCode = (int)(HttpStatusCode.BadRequest);
-                    Console.WriteLine($"\n\nStatus code: {context.Response.StatusCode}, bad query string");
-                    context.Response.OutputStream.Close();
-                }
+                ReturnBadRequest(context, "bad query string");
             }
             
             if (key == "subreddit")
@@ -102,12 +107,7 @@ public class HttpServer
             }
             else
             {
-                lock(consoleLogLocker)
-                {
-                    context.Response.StatusCode = (int)(HttpStatusCode.BadRequest);
-                    Console.WriteLine($"\n\nStatuss code: {context.Response.StatusCode}, bad query string");
-                    context.Response.OutputStream.Close();
-                }
+                ReturnBadRequest(context, "bad query string");
             }
             
             if (subredditFound == true)
@@ -119,6 +119,16 @@ public class HttpServer
                 return null;
             }
 
+        }
+
+        public static void ReturnBadRequest(HttpListenerContext context, string message)
+        {
+            lock(ConsoleLogLocker.Locker)
+            {
+                context.Response.StatusCode = (int)(HttpStatusCode.BadRequest);
+                Console.WriteLine($"\n\nStatus code: {context.Response.StatusCode}, {message}");
+                context.Response.OutputStream.Close();
+            }
         }
 
         public void StopServer()
