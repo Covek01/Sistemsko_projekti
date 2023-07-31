@@ -11,19 +11,22 @@ public class SubredditCommentObserver : IObserver<SubredditEvaluatedResult>
     private SubredditEvaluatedResult Result {get; set;}
     private string HTMLResult {get; set;}
     private string HTMLResponse {get; set;}
-    private async Task PrintObservedValuesToConsole(SubredditEvaluatedResult result)
+    private string bufferedResult = "";
+    private async Task PrintObservedValuesToConsole(SubredditEvaluatedResult result, string bufferedResult)
     {
         lock(ConsoleLogLocker.Locker)
         {
-            Console.WriteLine(result.Text);
+            Console.WriteLine(bufferedResult);
             //Console.WriteLine();
         }
         
-        result.Context.Response.OutputStream.Write(Encoding.UTF8.GetBytes(HttpServer.createParagraph(result.Text)));
+        //result.Context.Response.OutputStream.Write(Encoding.UTF8.GetBytes(HttpServer.createParagraph(result.Text)));
     }
     public void OnNext(SubredditEvaluatedResult result)
     {
-        this.PrintObservedValuesToConsole(result);
+        bufferedResult += result.Text;
+        //this.PrintObservedValuesToConsole(result);
+        result.Context.Response.OutputStream.Write(Encoding.UTF8.GetBytes(HttpServer.createParagraph(result.Text)));
     }
     public void OnError(Exception e)
     {
@@ -31,7 +34,12 @@ public class SubredditCommentObserver : IObserver<SubredditEvaluatedResult>
     }
     public void OnCompleted()
     {
-        Console.WriteLine($"Finished with topic modeling results for specified subreddits");
+        lock(ConsoleLogLocker.Locker)
+        {
+            this.PrintObservedValuesToConsole(this.Result, this.bufferedResult);
+            Console.WriteLine($"Finished with topic modeling results for specified subreddits");
+        }
+
         
     }
 

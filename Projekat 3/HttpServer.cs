@@ -72,7 +72,7 @@ public class HttpServer
             var observer = new SubredditCommentObserver();
 
             var subscription = streamer.Subscribe(observer);
-
+            
             await streamer.PerformModeling(subreddits, subredditCount, numOfPosts, numOfCommentsPerPost);
 
 
