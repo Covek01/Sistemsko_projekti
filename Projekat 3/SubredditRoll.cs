@@ -4,8 +4,8 @@ public class SubredditRoll
 {
     public string SubredditName {get; set;}
 
-    public static string clientId = "o2xmijT4z2PTF1SpjeKE0A";
-    public static string clientSecret = "qs_MaSZO2QdDOrwna_VoUeRn-8wdbQ";
+    public static string clientId = "";
+    public static string clientSecret = "";
     public AuthorizationRedditApi? RedditApi;
 
     public SubredditRoll(string name = null)
